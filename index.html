@@ -76,12 +76,14 @@
     .duel .gap{flex-direction:row;gap:10px}
   }
   footer{padding:0 26px 30px;color:var(--dim);font-size:11.5px}
-  .tabs{display:flex;gap:4px;padding:8px 26px 14px;border-top:1px solid var(--line);
-        flex-wrap:wrap;margin-top:8px}
+  .tabs{display:flex;gap:4px;padding:2px 24px 0;flex-wrap:wrap;border-bottom:1px solid var(--line);
+        margin:2px 0 12px}
   .tabs button{background:transparent;border:1px solid transparent;border-bottom:2px solid transparent;
-        color:var(--dim);padding:8px 14px;font-size:13px;cursor:pointer;border-radius:7px 7px 0 0}
+        color:var(--dim);padding:9px 15px;font-size:13px;cursor:pointer;border-radius:7px 7px 0 0;
+        margin-bottom:-1px}
   .tabs button:hover{color:var(--txt);background:var(--panel)}
-  .tabs button.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
+  .tabs button.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:600;
+        background:linear-gradient(180deg,transparent 55%,rgba(108,192,112,.10))}
   #cview table{margin-top:4px}
   .cbar{display:inline-block;height:8px;border-radius:4px;background:#3f4753;
         vertical-align:middle;margin-left:8px;min-width:2px}
@@ -119,27 +121,31 @@
   <label>Поиск<input id="q" type="search" placeholder="сицилианская…" style="min-width:170px"></label>
 </div>
 
+<nav class="tabs" id="ctabs">
+  <button data-t="debuts" class="on">Винрейты дебютов</button>
+  <button data-t="bands">Цвет по бэндам</button>
+  <button data-t="popular">Популярные дебюты</button>
+  <button data-t="cross">Дебют во всех бэндах</button>
+</nav>
+
 <main>
   <div class="duel" id="duel"></div>
   <div class="stat" id="stat"></div>
-  <table>
-    <thead><tr id="head"></tr></thead>
-    <tbody id="body"></tbody>
-  </table>
-  <div class="empty" id="empty" hidden>Нет данных под эти фильтры — снизьте минимальное число партий.</div>
-  <div class="pager" id="pager"></div>
-</main>
 
-<section id="colourBlock">
-  <nav class="tabs" id="ctabs">
-    <button data-t="debuts" class="on">Винрейты дебютов</button>
-    <button data-t="bands">Цвет по бэндам</button>
-    <button data-t="popular">Популярные дебюты</button>
-    <button data-t="cross">Дебют во всех бэндах</button>
-  </nav>
+  <div id="viewDebuts">
+    <table>
+      <thead><tr id="head"></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>Нет данных под эти фильтры — снизьте минимальное число партий.</div>
+    <div class="pager" id="pager"></div>
+  </div>
+
   <div class="stat" id="cstat"></div>
   <div id="cview"></div>
-</section>
+</main>
+
+<section id="colourBlock" hidden></section>
 
 <footer>
   Источник: официальные дампы Lichess (<a href="https://database.lichess.org" target="_blank" rel="noopener">database.lichess.org</a>), CC0.
@@ -166,15 +172,13 @@ function loadColour(month, mode){
 
 function renderColour(){
   const tab = state.tab || "debuts";
-  if (tab === "debuts") return renderDebuts();
+  const isDeb = tab === "debuts";
+  $("viewDebuts").hidden = !isDeb;
+  $("cstat").hidden = isDeb;
+  $("cview").hidden = isDeb;
+  if (isDeb){ $("cstat").textContent = ""; $("cview").innerHTML = ""; return; }
   if (tab === "bands") return renderBands();
   return renderCross(tab);
-}
-
-// Tab 1: what is already on top of the page, repeated compactly for reference
-function renderDebuts(){
-  $("cstat").textContent = "винрейты дебютов для выбранного бэнда — подробно в основной таблице выше";
-  $("cview").innerHTML = "";
 }
 
 // Tab 2: White vs Black across every band
@@ -389,7 +393,7 @@ function render(){
           <div class="cap">Винрейт чёрных</div>
           <div class="big">${pct(l)}</div>
           <div class="meta">score с ничьими <b>${pct(bs)}</b> · побед <b>${num(totals[3])}</b></div>
-          <div class="track"><i class="sb" style="width:${l*100}%"></i><i class="sd" style="width:${d*100}%"></i><i class="sw" style="width:${w*100}%"></i></div>
+          <div class="track"><i class="sw" style="width:${w*100}%"></i><i class="sd" style="width:${d*100}%"></i><i class="sb" style="width:${l*100}%"></i></div>
         </div>`;
     } else {
       $("duel").innerHTML = "";
