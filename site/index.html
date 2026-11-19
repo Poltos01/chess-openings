@@ -103,8 +103,8 @@
   <label>Рейтинг<select id="band"></select></label>
   <label>Разрез
     <div class="seg" id="kind">
-      <button data-v="pair" class="on">1-й ход / ответ</button>
-      <button data-v="eco">дебют по ECO</button>
+      <button data-v="pair">1-й ход / ответ</button>
+      <button data-v="eco" class="on">дебют по ECO</button>
     </div>
   </label>
   <label>Бэнд
@@ -154,7 +154,7 @@
 </footer>
 
 <script>
-const state = {kind:"pair", mode:"avg", sort:"score", dir:-1, page:0,
+const state = {kind:"eco", mode:"avg", sort:"name", dir:1, page:0,
                index:null, slice:null, cache:new Map()};
 const $ = id => document.getElementById(id);
 const num = x => x.toLocaleString("ru-RU");
