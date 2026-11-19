@@ -67,6 +67,12 @@
   .duel .track i{display:block;height:100%}
   .duel .track .sw{background:#e8eaf0} .duel .track .sd{background:#3f4753}
   .duel .track .sb{background:#6b7280}
+  .barfull{grid-column:1/-1;display:flex;height:16px;border-radius:8px;overflow:hidden;
+       background:#232a34;margin-top:2px}
+  .barfull i{display:block;height:100%;transition:width .18s}
+  .barfull .w{background:#4ea862} .barfull .d{background:#5a6470} .barfull .b{background:#d05a3d}
+  .duel .white .big{color:#4ea862} .duel .black .big{color:#d05a3d}
+  .duel .mid .v{color:#9aa4b2}
   .duel .gap{display:flex;flex-direction:column;justify-content:center;
        align-items:center;text-align:center;color:var(--dim);font-size:12px;padding:6px 0;white-space:nowrap}
   .duel .gap .v{font-size:22px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
@@ -174,6 +180,8 @@ function renderColour(){
   const tab = state.tab || "debuts";
   const isDeb = tab === "debuts";
   $("viewDebuts").hidden = !isDeb;
+  $("duel").hidden = !isDeb;
+  $("stat").hidden = !isDeb;
   $("cstat").hidden = isDeb;
   $("cview").hidden = isDeb;
   if (isDeb){ $("cstat").textContent = ""; $("cview").innerHTML = ""; return; }
@@ -324,8 +332,8 @@ async function loadSlice(){
 }
 
 const COLS = [
-  ["name","Дебют",0],["n","N",1],["w","W%",1],["d","D%",1],["l","L%",1],
-  ["score","score белых",1],["bscore","score чёрных",1],["delta","Δ к базе",1]
+  ["name","Дебют",1],["n","N",1],["w","Победы белых",1],["d","Ничьи",0],
+  ["l","Победы чёрных",1],["delta","Δ к базе",1]
 ];
 
 function renderPager(pages, total, from, count){
@@ -364,36 +372,36 @@ function render(){
     const rows = sl ? (sl[state.mode][state.kind] || []).filter(e =>
         e[1] >= minN && (!q || e[0].toLowerCase().includes(q))) : [];
     const totals = sl ? sl.meta["totals_" + state.mode] : [0,0,0,0];
-    const base = totals[0] ? score(totals) : 0.5;
+    const base = totals[0] ? totals[1] / totals[0] : 0.33;   // baseline White win%
 
     const view = rows.map(e => {
-      const s = score(e);
-      return {name:e[0], n:e[1], w:e[2]/e[1], d:e[3]/e[1], l:e[4]/e[1],
-              score:s, bscore:1-s, delta:s-base};
+      const w = e[2]/e[1];
+      return {name:e[0], n:e[1], w, d:e[3]/e[1], l:e[4]/e[1], delta:w - base};
     });
 
-    // --- colour duel: White % vs Black % for the whole selected slice ---
+    // --- colour duel: raw win% for each side, draws kept separate ---
     if (totals[0]){
       const w = totals[1] / totals[0], d = totals[2] / totals[0], l = totals[3] / totals[0];
-      const ws = w + d/2, bs = l + d/2;
-      const lead = (ws - bs) * 100;
       $("duel").innerHTML = `
         <div class="side white">
-          <div class="cap">Винрейт белых</div>
+          <div class="cap">Победы белых</div>
           <div class="big">${pct(w)}</div>
-          <div class="meta">score с ничьими <b>${pct(ws)}</b> · побед <b>${num(totals[1])}</b></div>
-          <div class="track"><i class="sw" style="width:${w*100}%"></i><i class="sd" style="width:${d*100}%"></i><i class="sb" style="width:${l*100}%"></i></div>
+          <div class="meta">${num(totals[1])} партий из ${num(totals[0])}</div>
         </div>
-        <div class="gap">
-          <span>перевес белых</span>
-          <span class="v" style="color:${lead>=0?'#6cc070':'#e0684b'}">${lead>=0?'+':''}${lead.toFixed(1)} п.п.</span>
-          <span>ничьих ${pct(d)}</span>
+        <div class="gap mid">
+          <span>ничьи</span>
+          <span class="v">${pct(d)}</span>
+          <span>${num(totals[2])}</span>
         </div>
         <div class="side black">
-          <div class="cap">Винрейт чёрных</div>
+          <div class="cap">Победы чёрных</div>
           <div class="big">${pct(l)}</div>
-          <div class="meta">score с ничьими <b>${pct(bs)}</b> · побед <b>${num(totals[3])}</b></div>
-          <div class="track"><i class="sw" style="width:${w*100}%"></i><i class="sd" style="width:${d*100}%"></i><i class="sb" style="width:${l*100}%"></i></div>
+          <div class="meta">${num(totals[3])} партий</div>
+        </div>
+        <div class="barfull">
+          <i class="w" style="width:${w*100}%"></i>
+          <i class="d" style="width:${d*100}%"></i>
+          <i class="b" style="width:${l*100}%"></i>
         </div>`;
     } else {
       $("duel").innerHTML = "";
@@ -401,13 +409,16 @@ function render(){
     const k = state.sort, dir = state.dir;
     view.sort((a,b) => (typeof a[k] === "string" ? a[k].localeCompare(b[k],"ru") : a[k]-b[k]) * dir);
 
-    $("head").innerHTML = COLS.map(([key,label]) =>
-      `<th data-k="${key}" class="${key===k?(dir>0?'asc':'desc'):''}">${label}</th>`).join("");
-    [...$("head").children].forEach(th => th.onclick = () => {
-      const key = th.dataset.k;
-      if (state.sort === key) state.dir *= -1; else { state.sort = key; state.dir = key === "name" ? 1 : -1; }
-      state.page = 0;
-      render();
+    $("head").innerHTML = COLS.map(([key,label,on]) =>
+      `<th data-k="${key}" ${on ? "" : 'style="cursor:default"'} class="${key===k?(dir>0?'asc':'desc'):''}">${label}</th>`).join("");
+    [...$("head").children].forEach((th,i) => {
+      if (!COLS[i][2]) return;                       // draws (and others) not sortable
+      th.onclick = () => {
+        const key = th.dataset.k;
+        if (state.sort === key) state.dir *= -1; else { state.sort = key; state.dir = key === "name" ? 1 : -1; }
+        state.page = 0;
+        render();
+      };
     });
 
     const perOpt = +$("persel").value;
@@ -417,15 +428,13 @@ function render(){
     const from = state.page * per;
     const shown = view.slice(from, from + per);
     $("body").innerHTML = shown.map(r => {
-      const w = Math.max(2, Math.round(r.score*70));
-      const cls = r.score >= base ? "hi" : "lo";
       const dcls = r.delta > 0 ? "pos" : "neg";
       return `<tr>
         <td>${r.name}</td>
         <td>${num(r.n)}</td>
-        <td>${pct(r.w)}</td><td>${pct(r.d)}</td><td>${pct(r.l)}</td>
-        <td class="score ${cls}">${pct(r.score)}<span class="bar" style="width:${w}px"></span></td>
-        <td>${pct(r.bscore)}</td>
+        <td class="pos">${pct(r.w)}</td>
+        <td style="color:#9aa4b2">${pct(r.d)}</td>
+        <td class="neg">${pct(r.l)}</td>
         <td class="${dcls}">${r.delta>0?"+":""}${(r.delta*100).toFixed(1)}</td>
       </tr>`;
     }).join("");
@@ -436,7 +445,7 @@ function render(){
     $("stat").innerHTML =
       `<span>партий в выборке: <b>${num(totals[0])}</b></span>
        <span>строк под фильтром: <b>${num(rows.length)}</b> (${num(gamesInTable)} партий)</span>
-       <span>база: <b>${pct(base)}</b></span>
+       <span>база: победы белых <b>${pct(base)}</b></span>
        <span>бэнд: <b>${$("band").value}–${+$("band").value+99}</b>, режим: <b>${state.mode === "avg" ? "по среднему" : "оба в бэнде"}</b></span>`;
   });
 }
