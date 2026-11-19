@@ -76,6 +76,16 @@
     .duel .gap{flex-direction:row;gap:10px}
   }
   footer{padding:0 26px 30px;color:var(--dim);font-size:11.5px}
+  .tabs{display:flex;gap:4px;padding:8px 26px 14px;border-top:1px solid var(--line);
+        flex-wrap:wrap;margin-top:8px}
+  .tabs button{background:transparent;border:1px solid transparent;border-bottom:2px solid transparent;
+        color:var(--dim);padding:8px 14px;font-size:13px;cursor:pointer;border-radius:7px 7px 0 0}
+  .tabs button:hover{color:var(--txt);background:var(--panel)}
+  .tabs button.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
+  #cview table{margin-top:4px}
+  .cbar{display:inline-block;height:8px;border-radius:4px;background:#3f4753;
+        vertical-align:middle;margin-left:8px;min-width:2px}
+  .cbar.pos{background:var(--accent);opacity:.7}
   a{color:var(--link)}
 </style>
 </head>
@@ -121,19 +131,14 @@
 </main>
 
 <section id="colourBlock">
-  <h2>Перевес цвета по всем бэндам <span class="sub" id="cstat" style="font-weight:400"></span></h2>
-  <table>
-    <thead><tr>
-      <th style="cursor:default">Бэнд</th>
-      <th style="cursor:default">партий</th>
-      <th style="cursor:default">белые выигрывают</th>
-      <th style="cursor:default">ничьи</th>
-      <th style="cursor:default">белые score</th>
-      <th style="cursor:default">чёрные score</th>
-      <th style="cursor:default">перевес белых</th>
-    </tr></thead>
-    <tbody id="cbody"></tbody>
-  </table>
+  <nav class="tabs" id="ctabs">
+    <button data-t="debuts" class="on">Винрейты дебютов</button>
+    <button data-t="bands">Цвет по бэндам</button>
+    <button data-t="popular">Популярные дебюты</button>
+    <button data-t="cross">Дебют во всех бэндах</button>
+  </nav>
+  <div class="stat" id="cstat"></div>
+  <div id="cview"></div>
 </section>
 
 <footer>
@@ -160,24 +165,109 @@ function loadColour(month, mode){
 }
 
 function renderColour(){
+  const tab = state.tab || "debuts";
+  if (tab === "debuts") return renderDebuts();
+  if (tab === "bands") return renderBands();
+  return renderCross(tab);
+}
+
+// Tab 1: what is already on top of the page, repeated compactly for reference
+function renderDebuts(){
+  $("cstat").textContent = "винрейты дебютов для выбранного бэнда — подробно в основной таблице выше";
+  $("cview").innerHTML = "";
+}
+
+// Tab 2: White vs Black across every band
+function renderBands(){
   loadColour($("month").value, state.mode).then(rows => {
-    if (!rows.length){ $("cbody").innerHTML = ""; $("cstat").textContent = ""; return; }
+    if (!rows.length){ $("cview").innerHTML = ""; $("cstat").textContent = ""; return; }
     const tot = rows.reduce((s,r) => s + r[1], 0) || 1;
     $("cstat").textContent =
-      `· ${$("month").value} · ${state.mode === "avg" ? "по среднему" : "оба в бэнде"} · все контроли`;
-    $("cbody").innerHTML = rows.map(([band, n, w, d, l]) => {
-      const wp = w/n, dp = d/n, lp = l/n;
-      const ws = wp + dp/2, bs = lp + dp/2, lead = (ws - bs) * 100;
-      const sel = String(band) === $("band").value;
-      return `<tr ${sel ? 'style="background:#1d2530"' : ""}>
-        <td>${band}–${band+99}${sel ? " ←" : ""}</td>
-        <td>${num(n)}</td>
-        <td>${pct(wp)}</td><td>${pct(dp)}</td>
-        <td>${pct(ws)}</td><td>${pct(bs)}</td>
-        <td class="${lead>=0?'pos':'neg'}">${lead>=0?"+":""}${lead.toFixed(1)} п.п.</td>
-      </tr>`;
-    }).join("") + `<tr style="color:var(--dim)">
-        <td>всего</td><td>${num(tot)}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      `${$("month").value} · ${state.mode === "avg" ? "по среднему" : "оба в бэнде"} · все контроли`;
+    $("cview").innerHTML = `<table>
+      <thead><tr><th style="cursor:default">Бэнд</th><th>партий</th>
+        <th>белые выигрывают</th><th>ничьи</th>
+        <th>белые score</th><th>чёрные score</th><th>перевес белых</th></tr></thead>
+      <tbody>${rows.map(([band, n, w, d, l]) => {
+        const wp = w/n, dp = d/n, lp = l/n;
+        const ws = wp + dp/2, bs = lp + dp/2, lead = (ws - bs) * 100;
+        const sel = String(band) === $("band").value;
+        return `<tr ${sel ? 'style="background:#1d2530"' : ""}>
+          <td>${band}–${band+99}${sel ? " ←" : ""}</td>
+          <td>${num(n)}</td>
+          <td>${pct(wp)}</td><td>${pct(dp)}</td>
+          <td>${pct(ws)}</td><td>${pct(bs)}</td>
+          <td class="${lead>=0?'pos':'neg'}">${lead>=0?"+":""}${lead.toFixed(1)} п.п.</td>
+        </tr>`;
+      }).join("")}</tbody></table>`;
+  });
+}
+
+function loadCross(tab){
+  // tabs are pair-based or eco-based; the files are named by the cut, not the tab
+  const kind = state.kind || "pair";
+  const key = "cross:" + kind;
+  if (!state.cache.has(key))
+    state.cache.set(key, fetch(`data/cross/${kind}.json`, {cache:"no-store"})
+      .then(r => r.ok ? r.json() : null).catch(() => null));
+  return state.cache.get(key);
+}
+
+// Tab 3: most popular openings — the ones that show up in every band
+function renderCross(tab){
+  loadCross(tab).then(cr => {
+    if (!cr){ $("cview").innerHTML = ""; $("cstat").textContent = ""; return; }
+    const kind = cr.meta.kind;
+    const label = kind === "pair" ? "первый ход / ответ" : "дебют по ECO";
+    const bands = Object.keys(cr.bands).map(Number).sort((a,b) => a-b);
+
+    if (tab === "popular"){
+      $("cstat").textContent =
+        `${cr.meta.month} · ${label} · blitz · порог ${cr.meta.min_n} партий в бэнде`;
+      const rows = [...cr.cross].sort((a,b) => b[2]-a[2]);
+      $("cview").innerHTML = `<table>
+        <thead><tr><th style="cursor:default">дебют</th><th>бэндов покрыто</th>
+          <th>партий всего</th><th>score белых</th><th></th></tr></thead>
+        <tbody>${rows.map(([name, nb, n, s]) => `<tr>
+          <td>${name}</td>
+          <td>${nb} / ${bands.length}</td>
+          <td>${num(n)}</td>
+          <td class="${s>=0.5?'pos':'neg'}">${pct(s)}</td>
+          <td style="text-align:left"><span class="cbar ${s>=0.5?'pos':''}" style="width:${Math.max(2,(s-0.45)*600)}px"></span></td>
+        </tr>`).join("")}</tbody></table>`;
+      return;
+    }
+
+    // Tab 4: one opening's score in every band
+    const names = cr.cross.map(c => c[0]);
+    $("cstat").innerHTML = `${cr.meta.month} · ${label} · blitz ·
+      выбрать дебют: <select id="csel" style="min-width:220px">
+      ${names.map(nm => `<option ${nm===state.crossName?"selected":""}>${nm}</option>`).join("")}
+      </select>`;
+    const cur = state.crossName && names.includes(state.crossName) ? state.crossName : names[0];
+    state.crossName = cur;
+    $("csel").onchange = e => { state.crossName = e.target.value; renderCross(tab); };
+
+    const byBand = new Map();
+    for (const b of bands)
+      for (const e of (cr.bands[b] || []))
+        if (e[0] === cur) byBand.set(b, e);
+
+    $("cview").innerHTML = `<table>
+      <thead><tr><th style="cursor:default">Бэнд</th><th>партий</th>
+        <th>W%</th><th>D%</th><th>L%</th><th>score белых</th><th>score чёрных</th></tr></thead>
+      <tbody>${bands.map(b => {
+        const e = byBand.get(b);
+        if (!e) return `<tr style="color:#4a5260"><td>${b}–${b+99}</td>
+          <td colspan="6" style="text-align:left">нет данных (${cr.meta.min_n}+ партий в бэнде)</td></tr>`;
+        const [, n, w, d, l] = e;
+        const ws = (w + d/2) / n;
+        return `<tr>
+          <td>${b}–${b+99}</td><td>${num(n)}</td>
+          <td>${pct(w/n)}</td><td>${pct(d/n)}</td><td>${pct(l/n)}</td>
+          <td class="${ws>=0.5?'pos':'neg'}">${pct(ws)}</td><td>${pct(1-ws)}</td>
+        </tr>`;
+      }).join("")}</tbody></table>`;
   });
 }
 
@@ -200,12 +290,20 @@ function boot(){
       if (!e.target.dataset.v) return;
       state[g] = e.target.dataset.v;
       state.page = 0;
+      state.crossName = null;
       [...$(g).children].forEach(b => b.classList.toggle("on", b === e.target));
       render();
       renderColour();
     };
   render();
   renderColour();
+  $("ctabs").onclick = e => {
+    const t = e.target.dataset.t;
+    if (!t) return;
+    state.tab = t;
+    [...$("ctabs").children].forEach(b => b.classList.toggle("on", b === e.target));
+    renderColour();
+  };
   });
 }
 
