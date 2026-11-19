@@ -1,0 +1,89 @@
+name: ingest
+
+on:
+  schedule:
+    - cron: "0 6 3 * *"      # 3-го числа каждого месяца, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Месяц в формате YYYY-MM (пусто = последний завершённый)"
+        required: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: deps
+        run: pip install --quiet zstandard
+
+      - name: resolve month
+        id: m
+        run: |
+          MONTH="${{ github.event.inputs.month }}"
+          if [ -z "$MONTH" ]; then
+            MONTH=$(python3 - <<'EOF'
+            import datetime as dt
+            t = dt.date.today()
+            prev = t.replace(day=1) - dt.timedelta(days=1)
+            print(prev.strftime("%Y-%m"))
+            EOF
+            )
+          fi
+          echo "month=$MONTH" >> "$GITHUB_OUTPUT"
+          echo "resolved: $MONTH"
+
+      - name: fetch dump index
+        run: |
+          mkdir -p site
+          curl -s --http1.1 "https://database.lichess.org/standard/list.txt" -o list.txt
+          URL=$(grep "lichess_db_standard_rated_${{ steps.m.outputs.month }}.pgn.zst$" list.txt | head -1)
+          if [ -z "$URL" ]; then echo "dump for this month not published yet"; exit 1; fi
+          echo "DUMP=$URL" >> "$GITHUB_ENV"
+
+      - name: ingest (streamed, no disk)
+        run: |
+          python3 ingest.py --source "$DUMP" --month "${{ steps.m.outputs.month }}" \
+                            --db /tmp/openings.sqlite
+
+      - name: export static site
+        run: |
+          python3 export.py --db /tmp/openings.sqlite --out site --min-n 20 \
+                            --month-label "${{ steps.m.outputs.month }}"
+
+      - name: commit data
+        run: |
+          git config user.name "ingest-bot"
+          git config user.email "ingest-bot@users.noreply.github.com"
+          git add site/data
+          git diff --staged --quiet || git commit -m "data: ${{ steps.m.outputs.month }}"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.d.outputs.page_url }}
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
